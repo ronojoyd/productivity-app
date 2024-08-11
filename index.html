@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Productivity Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+        .left-panel, .right-panel {
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .left-panel {
+            flex: 1;
+            background-color: #ffffff;
+        }
+        .right-panel {
+            flex: 1;
+            background-color: #e6e6e6;
+        }
+        .timer-circle {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: conic-gradient(#4CAF50 0deg, #e0e0e0 0deg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0 auto 20px;
+        }
+        .timer-text {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .goals {
+            margin-top: 20px;
+        }
+        .goal-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .goal-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .goal-item {
+            background-color: #f1f1f1;
+            margin-bottom: 5px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .calendar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .time-slot {
+            width: calc(20% - 5px);
+            padding: 10px;
+            background-color: #ffffff;
+            border-radius: 5px;
+            text-align: center;
+            cursor: pointer;
+        }
+        .time-slot:hover {
+            background-color: #e0e0e0;
+        }
+        .occupied {
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="left-panel">
+        <h2>Time Left in the Day</h2>
+        <div class="timer-circle">
+            <div class="timer-text"></div>
+        </div>
+        <div class="goals">
+            <h3>Daily Goals</h3>
+            <input type="text" class="goal-input" id="dailyGoalInput" placeholder="Add a daily goal">
+            <ul class="goal-list" id="dailyGoalList"></ul>
+            <h3>Long-term Goals</h3>
+            <input type="text" class="goal-input" id="longTermGoalInput" placeholder="Add a long-term goal">
+            <ul class="goal-list" id="longTermGoalList"></ul>
+        </div>
+    </div>
+    <div class="right-panel">
+        <h2>Task Calendar</h2>
+        <div>
+            <label for="incrementSelect">Time increment:</label>
+            <select id="incrementSelect">
+                <option value="15">15 minutes</option>
+                <option value="20">20 minutes</option>
+                <option value="25">25 minutes</option>
+                <option value="30">30 minutes</option>
+            </select>
+        </div>
+        <div class="calendar" id="calendar"></div>
+    </div>
+
+    <script>
+        let data = {
+            bedtime: "22:00",
+            dailyGoals: [],
+            longTermGoals: [],
+            tasks: {}
+        };
+
+        function saveData() {
+            localStorage.setItem('productivityData', JSON.stringify(data));
+        }
+
+        function loadData() {
+            const savedData = localStorage.getItem('productivityData');
+            if (savedData) {
+                data = JSON.parse(savedData);
+                updateGoalLists();
+                updateCalendar();
+            }
+        }
+
+        function updateTimer() {
+            const now = moment();
+            const bedtime = moment(data.bedtime, "HH:mm");
+            if (bedtime.isBefore(now)) {
+                bedtime.add(1, 'day');
+            }
+            const duration = moment.duration(bedtime.diff(now));
+            const hours = Math.floor(duration.asHours());
+            const minutes = duration.minutes();
+
+            const totalMinutes = duration.asMinutes();
+            const totalMinutesInDay = moment.duration(moment(data.bedtime, "HH:mm").diff(moment().startOf('day'))).asMinutes();
+            const percentage = (totalMinutes / totalMinutesInDay) * 100;
+
+            document.querySelector('.timer-circle').style.background = `conic-gradient(#4CAF50 ${percentage * 3.6}deg, #e0e0e0 ${percentage * 3.6}deg)`;
+            document.querySelector('.timer-text').textContent = `${hours}h ${minutes}m`;
+        }
+
+        function addGoal(type) {
+            const input = document.getElementById(`${type}GoalInput`);
+            const goal = input.value.trim();
+            if (goal) {
+                data[`${type}Goals`].push(goal);
+                saveData();
+                updateGoalLists();
+                input.value = '';
+            }
+        }
+
+        function updateGoalLists() {
+            ['daily', 'longTerm'].forEach(type => {
+                const list = document.getElementById(`${type}GoalList`);
+                list.innerHTML = '';
+                data[`${type}Goals`].forEach(goal => {
+                    const li = document.createElement('li');
+                    li.textContent = goal;
+                    li.className = 'goal-item';
+                    list.appendChild(li);
+                });
+            });
+        }
+
+        function updateCalendar() {
+            const calendar = document.getElementById('calendar');
+            calendar.innerHTML = '';
+            const increment = parseInt(document.getElementById('incrementSelect').value);
+            const now = moment();
+            const bedtime = moment(data.bedtime, "HH:mm");
+            if (bedtime.isBefore(now)) {
+                bedtime.add(1, 'day');
+            }
+
+            while (now.isBefore(bedtime)) {
+                const slot = document.createElement('div');
+                slot.className = 'time-slot';
+                const timeString = now.format('HH:mm');
+                slot.textContent = timeString;
+                if (data.tasks[timeString]) {
+                    slot.classList.add('occupied');
+                    slot.title = data.tasks[timeString];
+                }
+                slot.onclick = () => addTask(timeString);
+                calendar.appendChild(slot);
+                now.add(increment, 'minutes');
+            }
+        }
+
+        function addTask(time) {
+            const task = prompt("Enter task for " + time);
+            if (task) {
+                data.tasks[time] = task;
+                saveData();
+                updateCalendar();
+            }
+        }
+
+        document.getElementById('dailyGoalInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addGoal('daily');
+        });
+
+        document.getElementById('longTermGoalInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addGoal('longTerm');
+        });
+
+        document.getElementById('incrementSelect').addEventListener('change', updateCalendar);
+
+        loadData();
+        updateTimer();
+        setInterval(updateTimer, 60000);
+        updateCalendar();
+    </script>
+</body>
+</html>
