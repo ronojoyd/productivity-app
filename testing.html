@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Productivity Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+        .left-panel, .right-panel {
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .left-panel {
+            flex: 1;
+            background-color: #ffffff;
+        }
+        .right-panel {
+            flex: 1;
+            background-color: #e6e6e6;
+        }
+        .timer-circle {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: conic-gradient(#4CAF50 0deg, #e0e0e0 0deg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0 auto 20px;
+        }
+        .timer-text {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .goals, .completed-tasks {
+            margin-top: 20px;
+        }
+        .goal-input, .bedtime-input {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .goal-list, .completed-task-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .goal-item, .completed-task-item {
+            background-color: #f1f1f1;
+            margin-bottom: 5px;
+            padding: 10px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .goal-text, .completed-task-text {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        .goal-actions {
+            display: flex;
+            gap: 5px;
+        }
+        .calendar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .time-slot {
+            width: calc(33.33% - 5px);
+            padding: 10px;
+            background-color: #ffffff;
+            border-radius: 5px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .time-slot:hover {
+            background-color: #e0e0e0;
+        }
+        .occupied {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .task-text {
+            font-size: 12px;
+            margin-top: 5px;
+            text-align: center;
+            word-wrap: break-word;
+        }
+        .edit-button, .delete-button, .set-bedtime-button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 5px 10px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 12px;
+            margin: 2px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .delete-button {
+            background-color: #f44336;
+        }
+        .set-bedtime-button {
+            background-color: #2196F3;
+        }
+        .completed-task-status {
+            margin-left: 10px;
+            font-weight: bold;
+        }
+        .completed {
+            color: #4CAF50;
+        }
+        .not-completed {
+            color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div class="left-panel">
+        <h2>Time Left in the Day</h2>
+        <div class="timer-circle">
+            <div class="timer-text"></div>
+        </div>
+        <div>
+            <input type="time" id="bedtimeInput" class="bedtime-input">
+            <button onclick="setBedtime()" class="set-bedtime-button">Set Bedtime</button>
+        </div>
+        <div class="goals">
+            <h3>Daily Goals</h3>
+            <input type="text" class="goal-input" id="dailyGoalInput" placeholder="Add a daily goal">
+            <ul class="goal-list" id="dailyGoalList"></ul>
+            <h3>Long-term Goals</h3>
+            <input type="text" class="goal-input" id="longTermGoalInput" placeholder="Add a long-term goal">
+            <ul class="goal-list" id="longTermGoalList"></ul>
+        </div>
+        <div class="completed-tasks">
+            <h3>Completed Tasks</h3>
+            <ul class="completed-task-list" id="completedTaskList"></ul>
+        </div>
+    </div>
+    <div class="right-panel">
+        <h2>Task Calendar</h2>
+        <div>
+            <label for="incrementSelect">Time increment:</label>
+            <select id="incrementSelect">
+                <option value="15">15 minutes</option>
+                <option value="20">20 minutes</option>
+                <option value="25">25 minutes</option>
+                <option value="30">30 minutes</option>
+            </select>
+        </div>
+        <div class="calendar" id="calendar"></div>
+    </div>
+
+    <script>
+        let data = {
+            bedtime: "22:00",
+            dailyGoals: [],
+            longTermGoals: [],
+            tasks: {},
+            completedTasks: []
+        };
+
+        function saveData() {
+            localStorage.setItem('productivityData', JSON.stringify(data));
+        }
+
+        function loadData() {
+            const savedData = localStorage.getItem('productivityData');
+            if (savedData) {
+                data = JSON.parse(savedData);
+                document.getElementById('bedtimeInput').value = data.bedtime;
+                updateGoalLists();
+                updateCalendar();
+                updateCompletedTasks();
+            }
+        }
+
+        function updateTimer() {
+            const now = moment();
+            const bedtime = moment(data.bedtime, "HH:mm");
+            if (bedtime.isBefore(now)) {
+                bedtime.add(1, 'day');
+            }
+            const duration = moment.duration(bedtime.diff(now));
+            const hours = Math.floor(duration.asHours());
+            const minutes = duration.minutes();
+            const seconds = duration.seconds();
+
+            const totalSeconds = duration.asSeconds();
+            const totalSecondsInDay = moment.duration(moment(data.bedtime, "HH:mm").diff(moment().startOf('day'))).asSeconds();
+            const percentage = (totalSeconds / totalSecondsInDay) * 100;
+
+            document.querySelector('.timer-circle').style.background = `conic-gradient(#4CAF50 ${percentage * 3.6}deg, #e0e0e0 ${percentage * 3.6}deg)`;
+            document.querySelector('.timer-text').textContent = `${hours}h ${minutes}m ${seconds}s`;
+
+            checkCompletedTasks();
+        }
+
+        function setBedtime() {
+            const bedtimeInput = document.getElementById('bedtimeInput');
+            data.bedtime = bedtimeInput.value;
+            saveData();
+            updateCalendar();
+        }
+
+        function addGoal(type) {
+            const input = document.getElementById(`${type}GoalInput`);
+            const goal = input.value.trim();
+            if (goal) {
+                data[`${type}Goals`].push(goal);
+                saveData();
+                updateGoalLists();
+                input.value = '';
+            }
+        }
+
+        function updateGoalLists() {
+            ['daily', 'longTerm'].forEach(type => {
+                const list = document.getElementById(`${type}GoalList`);
+                list.innerHTML = '';
+                data[`${type}Goals`].forEach((goal, index) => {
+                    const li = document.createElement('li');
+                    li.className = 'goal-item';
+                    li.innerHTML = `
+                        <span class="goal-text">${goal}</span>
+                        <div class="goal-actions">
+                            <button class="edit-button" onclick="editGoal('${type}', ${index})">Edit</button>
+                            <button class="delete-button" onclick="deleteGoal('${type}', ${index})">Delete</button>
+                        </div>
+                    `;
+                    list.appendChild(li);
+                });
+            });
+        }
+
+        function editGoal(type, index) {
+            const newGoal = prompt("Edit goal:", data[`${type}Goals`][index]);
+            if (newGoal !== null) {
+                data[`${type}Goals`][index] = newGoal;
+                saveData();
+                updateGoalLists();
+            }
+        }
+
+        function deleteGoal(type, index) {
+            if (confirm("Are you sure you want to delete this goal?")) {
+                data[`${type}Goals`].splice(index, 1);
+                saveData();
+                updateGoalLists();
+            }
+        }
+
+        function updateCalendar() {
+            const calendar = document.getElementById('calendar');
+            calendar.innerHTML = '';
+            const increment = parseInt(document.getElementById('incrementSelect').value);
+            let now = moment().startOf('minute');
+            const bedtime = moment(data.bedtime, "HH:mm");
+            if (bedtime.isBefore(now)) {
+                bedtime.add(1, 'day');
+            }
+
+            // Round to the next closest increment
+            const minutesToNext = increment - (now.minutes() % increment);
+            if (minutesToNext < increment) {
+                now.add(minutesToNext, 'minutes');
+            }
+
+            while (now.isBefore(bedtime)) {
+                const slot = document.createElement('div');
+                slot.className = 'time-slot';
+                const timeString = now.format('HH:mm');
+                slot.innerHTML = `<div>${timeString}</div>`;
+                if (data.tasks[timeString]) {
+                    slot.classList.add('occupied');
+                    slot.innerHTML += `<div class="task-text">${data.tasks[timeString]}</div>`;
+                }
+                slot.onclick = () => addTask(timeString);
+                calendar.appendChild(slot);
+                now.add(increment, 'minutes');
+            }
+        }
+
+        function addTask(time) {
+            const existingTask = data.tasks[time] || '';
+            const task = prompt("Enter task for " + time, existingTask);
+            if (task !== null) {
+                if (task.trim() === '') {
+                    delete data.tasks[time];
+                } else {
+                    data.tasks[time] = task;
+                }
+                saveData();
+                updateCalendar();
+            }
+        }
+
+        function checkCompletedTasks() {
+            const now = moment();
+            const increment = parseInt(document.getElementById('incrementSelect').value);
+            Object.keys(data.tasks).forEach(time => {
+                const taskTime = moment(time, "HH:mm");
+                if (taskTime.isBefore(now)) {
+                    const taskEndTime = moment(taskTime).add(increment, 'minutes');
+                    if (taskEndTime.isBefore(now)) {
+                        const task = data.tasks[time];
+                        if (!data.completedTasks.some(t => t.time === time)) {
+                            const completed = confirm(`Did you complete the task "${task}" scheduled for ${time}?`);
+                            data.completedTasks.push({ time, task, completed });
+                            delete data.tasks[time];
+                            saveData();
+                            updateCalendar();
+                            updateCompletedTasks();
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateCompletedTasks() {
+            const list = document.getElementById('completedTaskList');
+            list.innerHTML = '';
+            data.completedTasks.forEach(task => {
+                const li = document.createElement('li');
+                li.className = 'completed-task-item';
+                li.innerHTML = `
+                    <span class="completed-task-text">${task.time} - ${task.task}</span>
+                    <span class="completed-task-status ${task.completed ? 'completed' : 'not-completed'}">
+                        ${task.completed ? '✓' : '✗'}
+                    </span>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        document.getElementById('dailyGoalInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addGoal('daily');
+        });
+
+        document.getElementById('longTermGoalInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addGoal('longTerm');
+        });
+
+        document.getElementById('incrementSelect').addEventListener('change', updateCalendar);
+
+        loadData();
+        updateTimer();
+        setInterval(updateTimer, 1000);  // Update every second
+        updateCalendar();
+    </script>
+</body>
+</html>
